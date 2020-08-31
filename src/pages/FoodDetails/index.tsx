@@ -72,49 +72,121 @@ const FoodDetails: React.FC = () => {
   const routeParams = route.params as Params;
 
   useEffect(() => {
-    async function loadFood(): Promise<void> {
-      // Load a specific food with extras based on routeParams id
-    }
+    const loadFoodAndExtras = async (): Promise<void> => {
+      const { id } = routeParams;
 
-    loadFood();
+      const response = await api.get<Food>(`/foods/${id}`);
+
+      const selectedFood = response.data;
+
+      setFood(selectedFood);
+
+      const formattedExtras = selectedFood.extras.map((extra: Extra) => {
+        return {
+          ...extra,
+          quantity: 0,
+        };
+      });
+
+      setExtras(formattedExtras);
+    };
+
+    loadFoodAndExtras();
   }, [routeParams]);
 
-  function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
-  }
+  const changeExtraQuantity = useCallback(
+    (id: number, quantity: number): void => {
+      const index = extras.findIndex(extra => id === extra.id);
+      const extra = extras[index];
 
-  function handleDecrementExtra(id: number): void {
-    // Decrement extra quantity
-  }
+      if (quantity >= 0) {
+        extra.quantity += quantity;
+      } else {
+        extra.quantity = extra.quantity <= 0 ? 0 : extra.quantity - 1;
+      }
 
-  function handleIncrementFood(): void {
-    // Increment food quantity
-  }
+      extras[index] = extra;
+      setExtras([...extras]);
+    },
 
-  function handleDecrementFood(): void {
-    // Decrement food quantity
-  }
+    [extras],
+  );
 
-  const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
+  const handleIncrementExtra = useCallback(
+    (id: number): void => {
+      changeExtraQuantity(id, +1);
+    },
+
+    [changeExtraQuantity],
+  );
+
+  const handleDecrementExtra = useCallback(
+    (id: number): void => {
+      changeExtraQuantity(id, -1);
+    },
+    [changeExtraQuantity],
+  );
+
+  const handleIncrementFood = useCallback((): void => {
+    setFoodQuantity(foodQuantity + 1);
+  }, [foodQuantity]);
+
+  const handleDecrementFood = useCallback((): void => {
+    if (foodQuantity > 1) setFoodQuantity(foodQuantity - 1);
+  }, [foodQuantity]);
+
+  const toggleFavorite = useCallback(async () => {
+    try {
+      if (isFavorite) {
+        setIsFavorite(false);
+        await api.delete(`/favorites/${food.id}`);
+        return;
+      }
+
+      setIsFavorite(true);
+      await api.post('/favorites', food);
+    } catch (error) {
+      console.error(error);
+    }
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
-    // Calculate cartTotal
+    const extraSubTotal = extras.reduce((subTotal, extra) => {
+      return subTotal + extra.value * extra.quantity;
+    }, 0);
+    const foodSubTotal = food.price * foodQuantity;
+
+    return formatValue(extraSubTotal + foodSubTotal);
   }, [extras, food, foodQuantity]);
 
-  async function handleFinishOrder(): Promise<void> {
-    // Finish the order and save on the API
-  }
+  const handleSubmitOrder = useCallback(async (): Promise<void> => {
+    try {
+      const response = await api.get('/orders');
 
-  // Calculate the correct icon name
+      const { data: orders } = response;
+
+      const newOrder = {
+        ...food,
+        id: orders.length + 1,
+        extras: { ...extras },
+        quantity: foodQuantity,
+      };
+      delete newOrder.id;
+
+      await api.post('/orders', newOrder);
+
+      navigation.navigate('Orders');
+    } catch (error) {
+      console.error(error);
+    }
+  }, [extras, food, foodQuantity, navigation]);
+
   const favoriteIconName = useMemo(
     () => (isFavorite ? 'favorite' : 'favorite-border'),
     [isFavorite],
   );
 
   useLayoutEffect(() => {
-    // Add the favorite icon on the right of the header bar
     navigation.setOptions({
       headerRight: () => (
         <MaterialIcon
@@ -149,6 +221,7 @@ const FoodDetails: React.FC = () => {
             </FoodContent>
           </Food>
         </FoodsContainer>
+
         <AdditionalsContainer>
           <Title>Adicionais</Title>
           {extras.map(extra => (
@@ -176,6 +249,7 @@ const FoodDetails: React.FC = () => {
             </AdittionalItem>
           ))}
         </AdditionalsContainer>
+
         <TotalContainer>
           <Title>Total do pedido</Title>
           <PriceButtonContainer>
@@ -201,7 +275,7 @@ const FoodDetails: React.FC = () => {
             </QuantityContainer>
           </PriceButtonContainer>
 
-          <FinishOrderButton onPress={() => handleFinishOrder()}>
+          <FinishOrderButton onPress={() => handleSubmitOrder()}>
             <ButtonText>Confirmar pedido</ButtonText>
             <IconContainer>
               <Icon name="check-square" size={24} color="#fff" />
